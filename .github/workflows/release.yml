@@ -95,7 +95,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PAT }}
           commit-message: "Release ${{ inputs.release_version }} (sing-box ${{ inputs.sing_box_tag }})"
           title: "Release: Libbox ${{ inputs.release_version }}"
           body: |
