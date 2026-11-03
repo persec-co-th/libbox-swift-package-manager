@@ -1,0 +1,49 @@
+name: Publish Release on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    # รันเฉพาะเมื่อ PR ถูก merge จริง, มาจาก branch release/ และมาจาก repo นี้เท่านั้น (ไม่รับ fork)
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish Draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          VERSION="${HEAD_REF#release/}"
+          # tag จะถูกสร้างที่ commit ที่ merge ลง main จริง เพื่อให้ SPM อ่าน Package.swift ที่ตรงกับ checksum
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --target "$MERGE_SHA"
+
+  cleanup:
+    # PR release/ ถูกปิดโดยไม่ merge -> ลบ draft release ที่ค้างอยู่
+    if: >-
+      github.event.pull_request.merged == false &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete Draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          VERSION="${HEAD_REF#release/}"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -q true; then
+            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes
+          fi
