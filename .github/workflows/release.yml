@@ -67,20 +67,29 @@ jobs:
       - name: Create Draft Release & Upload Binary
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SING_BOX_TAG: ${{ inputs.sing_box_tag }}
         run: |
-          gh release create "${{ inputs.release_version }}" \
+          # ลบ draft เดิม (ถ้ามี) เพื่อให้ re-run ด้วย version เดิมได้
+          if gh release view "$RELEASE_VERSION" --json isDraft --jq .isDraft 2>/dev/null | grep -q true; then
+            gh release delete "$RELEASE_VERSION" --yes
+          fi
+          gh release create "$RELEASE_VERSION" \
             sing-box/Libbox.xcframework.zip \
             --draft \
-            --title "Libbox ${{ inputs.release_version }}" \
-            --notes "Built from SagerNet/sing-box ${{ inputs.sing_box_tag }} — tags: with_gvisor, with_utls, with_quic, with_clash_api, with_low_memory (ios only) · slices: ios, ios-simulator, macos"
+            --title "Libbox $RELEASE_VERSION" \
+            --notes "Built from SagerNet/sing-box $SING_BOX_TAG — tags: with_gvisor, with_utls, with_quic, with_clash_api, with_low_memory (ios only) · slices: ios, ios-simulator, macos"
 
       - name: Update Package.swift file
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          SING_BOX_TAG: ${{ inputs.sing_box_tag }}
         run: |
           CHECKSUM=$(shasum -a 256 sing-box/Libbox.xcframework.zip | awk '{print $1}')
-          URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_version }}/Libbox.xcframework.zip"
+          URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_VERSION}/Libbox.xcframework.zip"
           sed -e "s|__URL__|$URL|" \
               -e "s|__CHECKSUM__|$CHECKSUM|" \
-              -e "s|__SOURCE__|SagerNet/sing-box ${{ inputs.sing_box_tag }}|" \
+              -e "s|__SOURCE__|SagerNet/sing-box $SING_BOX_TAG|" \
               Package.swift.tmpl > Package.swift
 
       - name: Create Pull Request
@@ -95,6 +104,7 @@ jobs:
             - Framework built and uploaded to Draft Release.
             - `Package.swift` updated with checksum and release asset URL.
             - Once merged, the draft release will be published and Git tag created automatically.
+          add-paths: Package.swift
           branch: "release/${{ inputs.release_version }}"
           base: main
           delete-branch: true
