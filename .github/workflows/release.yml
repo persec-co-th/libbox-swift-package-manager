@@ -1,4 +1,4 @@
-name: Build Libbox
+name: Prepare Release PR
 
 on:
   workflow_dispatch:
@@ -14,9 +14,10 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  build:
+  prepare-release:
     runs-on: macos-15
 
     steps:
@@ -63,16 +64,17 @@ jobs:
           find Libbox.xcframework -name "Libbox" -type f -exec du -sh {} \; >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish release
+      - name: Create Draft Release & Upload Binary
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ inputs.release_version }}" \
             sing-box/Libbox.xcframework.zip \
+            --draft \
             --title "Libbox ${{ inputs.release_version }}" \
             --notes "Built from SagerNet/sing-box ${{ inputs.sing_box_tag }} — tags: with_gvisor, with_utls, with_quic, with_clash_api, with_low_memory (ios only) · slices: ios, ios-simulator, macos"
 
-      - name: Update Package.swift
+      - name: Update Package.swift file
         run: |
           CHECKSUM=$(shasum -a 256 sing-box/Libbox.xcframework.zip | awk '{print $1}')
           URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.release_version }}/Libbox.xcframework.zip"
@@ -80,8 +82,19 @@ jobs:
               -e "s|__CHECKSUM__|$CHECKSUM|" \
               -e "s|__SOURCE__|SagerNet/sing-box ${{ inputs.sing_box_tag }}|" \
               Package.swift.tmpl > Package.swift
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Package.swift
-          git commit -m "Libbox ${{ inputs.release_version }} (sing-box ${{ inputs.sing_box_tag }})"
-          git push
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Release ${{ inputs.release_version }} (sing-box ${{ inputs.sing_box_tag }})"
+          title: "Release: Libbox ${{ inputs.release_version }}"
+          body: |
+            Automated PR for release `${{ inputs.release_version }}` (sing-box `${{ inputs.sing_box_tag }}`).
+
+            - Framework built and uploaded to Draft Release.
+            - `Package.swift` updated with checksum and release asset URL.
+            - Once merged, the draft release will be published and Git tag created automatically.
+          branch: "release/${{ inputs.release_version }}"
+          base: main
+          delete-branch: true
